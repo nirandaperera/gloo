@@ -30,6 +30,8 @@
 #include "gloo/transport/pair.h"
 #include "gloo/transport/tcp/address.h"
 #include "gloo/transport/tcp/device.h"
+#include "gloo/transport/tcp/error.h"
+#include "gloo/transport/tcp/socket.h"
 
 namespace gloo {
 namespace transport {
@@ -83,7 +85,6 @@ class Pair : public ::gloo::transport::Pair, public Handler {
  protected:
   enum state {
     INITIALIZING = 1,
-    LISTENING = 2,
     CONNECTING = 3,
     CONNECTED = 4,
     CLOSED = 5,
@@ -145,6 +146,8 @@ class Pair : public ::gloo::transport::Pair, public Handler {
 
   void close() override;
 
+  bool isConnected() override;
+
  protected:
   // Refer to parent context using raw pointer. This could be a
   // weak_ptr, seeing as the context class is a shared_ptr, but:
@@ -170,7 +173,6 @@ class Pair : public ::gloo::transport::Pair, public Handler {
 
   Address self_;
   Address peer_;
-  bool is_client_;
 
   std::mutex m_;
   std::condition_variable cv_;
@@ -191,8 +193,7 @@ class Pair : public ::gloo::transport::Pair, public Handler {
   void sendNotifyRecvReady(uint64_t slot, size_t nbytes);
   void sendNotifySendReady(uint64_t slot, size_t nbytes);
 
-  void listen();
-  void connect(const Address& peer);
+  void connectCallback(std::shared_ptr<Socket> socket, Error error);
 
   Buffer* getBuffer(int slot);
   void registerBuffer(Buffer* buf);
@@ -277,28 +278,6 @@ class Pair : public ::gloo::transport::Pair, public Handler {
   //
   virtual void handleReadWrite(int events);
 
-  // Finishes connection setup if this side of the pair is on the
-  // listening side of connection initiation. This is called from
-  // `handleEvents` if the listening file descriptor is readable, i.e.
-  // if there is an incoming connection.
-  //
-  // The pair mutex is expected to be held when called.
-  //
-  void handleListening();
-
-  // Finishes connection setup if this side of the pair is on the
-  // connecting side of the connection initiation. This is called from
-  // `handleEvents` if the file descriptor associated with the
-  // connection is writable or in an error state, i.e. the connection
-  // has been established or failed to establish.
-  //
-  // The pair mutex is expected to be held when called.
-  //
-  void handleConnecting();
-
-  // Helper function called from `handleListening` or `handleConnecting`.
-  void handleConnected();
-
   // Advances this pair's state. See the `Pair::state` enum for
   // possible states. State can only move forward, i.e. from
   // initializing, to connected, to closed.
@@ -346,8 +325,8 @@ class Pair : public ::gloo::transport::Pair, public Handler {
   void signalException(std::exception_ptr);
 
   // Like signalException, but throws exception as well.
-  void signalAndThrowException(const std::string& msg);
-  void signalAndThrowException(std::exception_ptr ex);
+  [[noreturn]] void signalAndThrowException(const std::string& msg);
+  [[noreturn]] void signalAndThrowException(std::exception_ptr ex);
 
   // Cache exception such that it can be rethrown if any function on
   // this instance is called again when it is in an error state.

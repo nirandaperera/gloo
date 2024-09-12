@@ -6,11 +6,12 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-#include "gloo/rendezvous/store.h"
+#pragma once
+
+#include <string>
 
 namespace gloo {
-namespace rendezvous {
 
+std::string getHostname();
 
-} // namespace rendezvous
 } // namespace gloo

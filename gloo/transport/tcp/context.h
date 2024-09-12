@@ -16,6 +16,7 @@
 #include <unordered_set>
 
 #include "gloo/common/memory.h"
+#include "gloo/common/store.h"
 #include "gloo/transport/context.h"
 
 namespace gloo {
@@ -34,6 +35,8 @@ class Context : public ::gloo::transport::Context,
   Context(std::shared_ptr<Device> device, int rank, int size);
 
   virtual ~Context();
+
+  virtual void createAndConnectAllPairs(IStore& store) override;
 
   std::unique_ptr<transport::Pair>& createPair(int rank) override;
 
@@ -83,11 +86,42 @@ class Context : public ::gloo::transport::Context,
   // out. All pairs should be signaled and closed in that event.
   void signalException(const std::string& msg);
 
+  // Returns a sorted list of connected peer ranks, excluding self.
+  // Normally all peer ranks should be connected at the end of
+  // createAndConnectAllPairs
+  // peer rank concept is introduced at the transport/tcp/pair level, so
+  // this method is defined at the same level instead of the parent contexts
+  std::vector<int> getConnectedPeerRanks() const;
+
+  // Returns a sorted list of unconnected and peer ranks, excluding self.
+  // Normally empty at the end of createAndConnectAllPairs
+  std::vector<int> getUnConnectedPeerRanks() const;
+
+  // a helper function to print out rank to rank connectivity information
+  void printConnectivityInfo() const;
+
   friend class ContextMutator;
 
   friend class UnboundBuffer;
 
   friend class Pair;
+};
+
+struct Rank {
+  std::string hostname;
+  std::vector<char> addressBytes;
+  std::vector<ssize_t> pairIdentifiers;
+
+  explicit Rank(
+      const std::string& hostname,
+      const std::vector<char>& addrBytes,
+      const std::vector<ssize_t>& pairIdentifiers)
+      : hostname(hostname),
+        addressBytes(addrBytes),
+        pairIdentifiers(pairIdentifiers) {}
+  explicit Rank(const std::vector<char>& bytes);
+
+  std::vector<char> bytes() const;
 };
 
 } // namespace tcp
